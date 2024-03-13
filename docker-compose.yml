@@ -1,0 +1,74 @@
+version: '3.9'
+services:
+  mysql_server:
+    image: mysql
+    container_name: mysql_server
+    environment:
+      MYSQL_ROOT_PASSWORD: sempardak
+    ports:
+      - 3306:3306
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - "./scripts/schema.sql:/docker-entrypoint-initdb.d/1.sql"
+    networks:
+      - app-network
+    restart: always
+
+  app:
+    container_name: app
+    depends_on:
+      mysql_server:
+        condition: service_started
+        restart: true
+        required: true
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./:/app
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: "mysql://root:sempardak@gateway.docker.internal:3306/blog"
+    ports:
+      - "5600:5600"
+    networks:
+      - app-network
+    restart: on-failure:10
+
+  app-migration:
+    container_name: app-migration
+    environment:
+      DATABASE_URL: "mysql://root:sempardak@gateway.docker.internal:3306/blog"
+    build: .
+    image: app
+    command: "npx prisma migrate dev"
+    volumes:
+      - ./:/app
+    links:
+      - mysql_server
+    depends_on:
+      mysql_server:
+        condition: service_started
+        restart: true
+        required: true
+    restart: on-failure:10
+  
+  app-seeding:
+    container_name: app-seeding
+    environment:
+      DATABASE_URL: "mysql://root:sempardak@gateway.docker.internal:3306/blog"
+    build: .
+    image: app
+    command: "npx prisma db seed"
+    volumes:
+      - ./:/app
+    links:
+      - mysql_server
+    depends_on:
+      - app-migration
+    restart: on-failure:10
+
+volumes:
+  mysql-data:
+networks:
+  app-network:
